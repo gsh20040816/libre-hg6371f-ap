@@ -15,6 +15,18 @@
 
 ---
 
+## 界面与实测一览
+
+| 实机外观（GPIO 自控蓝灯） | 极简文件树与 `1.55 Gbps` 实测 |
+| :---: | :---: |
+| ![实机外观](docs/images/00-hardware.jpg) | ![文件树与测速](docs/images/07-tree-iperf3.png) |
+
+| 面板概览（实时吞吐波形） | Home Assistant MQTT 自动发现 |
+| :---: | :---: |
+| ![面板概览](docs/images/01-overview.png) | ![Home Assistant](docs/images/06-home-assistant.png) |
+
+---
+
 ## 核心特性
 
 - **100% 开源用户态（零 `/opt/bcm` 闭源工具、零 `glibc`/`ld-linux.so.3`）**：

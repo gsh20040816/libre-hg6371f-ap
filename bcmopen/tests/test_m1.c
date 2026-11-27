@@ -59,26 +59,29 @@ static void test_crc_and_real_metadata(void) {
     /* Standard IEEE CRC32 check vector: "123456789" -> 0xCBF43926 */
     CHECK(bcm_crc32("123456789", 9) == 0xcbf43926u, "IEEE CRC32 standard test vector");
 
-    /* Real device backup metadata1.bin */
+    /* Real device backup metadata1.bin (optional in public repo without local backups/) */
     FILE *fp = fopen("../backups/metadata1.bin", "rb");
-    CHECK(fp != NULL, "open ../backups/metadata1.bin");
-    uint8_t raw[BCM_META_VOL_BYTES];
-    size_t n = fread(raw, 1, sizeof(raw), fp);
-    fclose(fp);
-    CHECK(n == BCM_META_VOL_BYTES, "metadata1.bin == 1280 bytes");
+    if (fp != NULL) {
+        uint8_t raw[BCM_META_VOL_BYTES];
+        size_t n = fread(raw, 1, sizeof(raw), fp);
+        fclose(fp);
+        CHECK(n == BCM_META_VOL_BYTES, "metadata1.bin == 1280 bytes");
 
-    uint32_t calc = bcm_crc32(raw + BCM_META_HDR_BYTES, BCM_META_CRC_LEN);
-    CHECK(calc == 0x5dcd9e8du, "real metadata1.bin CRC32 == 0x5dcd9e8d");
+        uint32_t calc = bcm_crc32(raw + BCM_META_HDR_BYTES, BCM_META_CRC_LEN);
+        CHECK(calc == 0x5dcd9e8du, "real metadata1.bin CRC32 == 0x5dcd9e8d");
 
-    bcm_boot_meta_t m;
-    CHECK(bcm_meta_parse(raw, n, &m) == 0, "parse real metadata1.bin");
-    CHECK(m.committed == 2, "real metadata1 committed == 2");
-    CHECK(m.valid[0] == 1 && m.valid[1] == 2, "real metadata1 valid == {1,2}");
-    CHECK(m.seq[0] == 1 && m.seq[1] == 2, "real metadata1 seq == {1,2}");
+        bcm_boot_meta_t m;
+        CHECK(bcm_meta_parse(raw, n, &m) == 0, "parse real metadata1.bin");
+        CHECK(m.committed == 2, "real metadata1 committed == 2");
+        CHECK(m.valid[0] == 1 && m.valid[1] == 2, "real metadata1 valid == {1,2}");
+        CHECK(m.seq[0] == 1 && m.seq[1] == 2, "real metadata1 seq == {1,2}");
 
-    /* Corrupt 1 bit -> must reject */
-    raw[0x15] ^= 0x01;
-    CHECK(bcm_meta_parse(raw, n, &m) != 0, "reject corrupted CRC");
+        /* Corrupt 1 bit -> must reject */
+        raw[0x15] ^= 0x01;
+        CHECK(bcm_meta_parse(raw, n, &m) != 0, "reject corrupted CRC");
+    } else {
+        printf("  [skip] ../backups/metadata1.bin not present (running synthetic pack/corrupt roundtrip)\n");
+    }
 
     /* Pack & roundtrip */
     bcm_boot_meta_t src = { .committed = 1, .valid = {1, 2}, .seq = {7, 8} };
@@ -88,6 +91,10 @@ static void test_crc_and_real_metadata(void) {
     CHECK(bcm_meta_parse(packed, sizeof(packed), &dst) == 0, "roundtrip parse packed metadata");
     CHECK(dst.committed == 1 && dst.valid[0] == 1 && dst.valid[1] == 2 &&
           dst.seq[0] == 7 && dst.seq[1] == 8, "roundtrip values exact match");
+
+    /* Corrupt 1 bit in synthetic packed metadata -> must reject */
+    packed[0x15] ^= 0x01;
+    CHECK(bcm_meta_parse(packed, sizeof(packed), &dst) != 0, "reject corrupted synthetic CRC");
 
     /* H11: VALID=%d,%d MUST always include both fields (1,0 / 0,2 / 0,0) */
     bcm_boot_meta_t v10 = { .committed = 1, .valid = {1, 0}, .seq = {999, 0} };
