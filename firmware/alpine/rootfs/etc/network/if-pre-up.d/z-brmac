@@ -1,0 +1,7 @@
+#!/bin/sh
+# Set factory bridge MAC right after /etc/network/if-pre-up.d/bridge creates br0
+# and before dhcpcd runs DHCPDISCOVER (so router assigns the static AP IP).
+if [ "${IFACE:-}" = "br0" ] && [ "${MODE:-}" = "start" ] && [ -f /run/bcm-brmac ]; then
+  ip link set dev br0 address "$(cat /run/bcm-brmac)" || true
+fi
+exit 0

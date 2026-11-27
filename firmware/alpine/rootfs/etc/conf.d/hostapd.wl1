@@ -1,0 +1,15 @@
+# OpenRC multi-instance config for /etc/init.d/hostapd.wl1 (5 GHz 160 MHz)
+cfgfile="/etc/hostapd/wl1.conf"
+supervisor="supervise-daemon"
+
+start_pre() {
+	/usr/local/sbin/bcm-rf pre wl1
+}
+
+start_post() {
+	/usr/local/sbin/bcm-rf post wl1
+}
+
+stop_post() {
+	/usr/local/sbin/bcm-rf down wl1
+}

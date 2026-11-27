@@ -1,0 +1,1343 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#0B6E7E">
+  <title>hg6371f-ap 控制台</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230B6E7E'/%3E%3Cpath d='M7 14a13 13 0 0 1 18 0M11 18a7.5 7.5 0 0 1 10 0' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='22.5' r='2.1' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#app">跳至主内容</a>
+
+  <header class="topbar" id="topbar" hidden>
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="pulse-dot" id="liveDot" title="实时连接正常" aria-label="实时连接状态"></span>
+        <span class="brand-name" id="hostName">hg6371f-ap</span>
+        <span class="slot-badge" id="slotBadge">Slot —</span>
+      </div>
+      <nav class="nav" role="tablist" aria-label="主导航">
+        <button type="button" class="nav-btn active" id="tab-overview" data-tab="overview" role="tab" aria-selected="true" aria-controls="view-overview" tabindex="0">概览</button>
+        <button type="button" class="nav-btn" id="tab-wifi" data-tab="wifi" role="tab" aria-selected="false" aria-controls="view-wifi" tabindex="-1">无线与设备</button>
+        <button type="button" class="nav-btn" id="tab-tune" data-tab="tune" role="tab" aria-selected="false" aria-controls="view-tune" tabindex="-1">射频调优</button>
+        <button type="button" class="nav-btn" id="tab-radar" data-tab="radar" role="tab" aria-selected="false" aria-controls="view-radar" tabindex="-1">感知雷达</button>
+        <button type="button" class="nav-btn" id="tab-network" data-tab="network" role="tab" aria-selected="false" aria-controls="view-network" tabindex="-1">网络与诊断</button>
+        <button type="button" class="nav-btn" id="tab-system" data-tab="system" role="tab" aria-selected="false" aria-controls="view-system" tabindex="-1">系统与维护</button>
+      </nav>
+      <div class="topbar-actions">
+        <button type="button" class="led-btn" id="btnQuickLed" title="点击切换指示灯自动/熄灯">
+          <span class="led-dot" id="topLedDot" aria-hidden="true"></span>
+          <span id="topLedText">灯</span>
+        </button>
+        <span class="tls-pill" id="tlsPill" hidden>HTTPS</span>
+        <button type="button" class="btn-ghost" id="btnLogout" title="退出登录">退出</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell" id="app" tabindex="-1" hidden>
+    <!-- 1. 概览 -->
+    <section class="view" id="view-overview" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="panel hero-scope">
+        <div class="scope-head">
+          <div class="scope-title-group">
+            <h1>实时吞吐</h1>
+            <div class="seg-group" id="scopeIfaceGroup" role="group" aria-label="流量接口">
+              <button type="button" class="seg-btn active" data-iface="lan" aria-pressed="true">lan0 2.5G</button>
+              <button type="button" class="seg-btn" data-iface="wl1" aria-pressed="false">wl1 5G</button>
+              <button type="button" class="seg-btn" data-iface="wl0" aria-pressed="false">wl0 2.4G</button>
+            </div>
+          </div>
+          <div class="scope-readouts">
+            <div class="readout">
+              <span class="swatch swatch-rx" aria-hidden="true"></span>
+              <span class="readout-label">接收</span>
+              <strong class="mono" id="rateRx">0.00</strong>
+              <span class="unit">Mbps</span>
+            </div>
+            <div class="readout">
+              <span class="swatch swatch-tx" aria-hidden="true"></span>
+              <span class="readout-label">发送</span>
+              <strong class="mono" id="rateTx">0.00</strong>
+              <span class="unit">Mbps</span>
+            </div>
+            <div class="readout readout-peak">
+              <span class="readout-label">峰值</span>
+              <strong class="mono" id="ratePeak">0.00</strong>
+              <span class="unit">Mbps</span>
+            </div>
+          </div>
+        </div>
+        <div class="scope-canvas chart-wrap" data-chart="traffic">
+          <svg id="trafficSvg" class="chart-svg chart-svg--traffic" role="img" aria-label="实时速率曲线"></svg>
+          <div class="chart-tip mono" id="trafficTip" hidden></div>
+        </div>
+      </div>
+
+      <div class="metric-strip panel">
+        <div class="metric-cell">
+          <div class="metric-label">芯片与射频温度</div>
+          <div class="metric-val mono" id="mTemp">—</div>
+          <div class="metric-sub mono" id="mLoad">—</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">可用内存</div>
+          <div class="metric-val mono" id="mMem">—</div>
+          <div class="metric-sub" id="mMemSub">进程 —</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">双网口状态 (lan0 / lan1)</div>
+          <div class="metric-val mono" id="mUplink">—</div>
+          <div class="metric-sub mono" id="mUplinkSub">—</div>
+        </div>
+        <div class="metric-cell">
+          <div class="metric-label">FlowCache 硬件转发</div>
+          <div class="metric-val" id="mFcache">—</div>
+          <div class="metric-sub mono" id="mFcacheSub">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>双频射频与空口体检</h2>
+          <span class="meta-line mono" id="sysMeta">—</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>频段</th>
+                <th>SSID</th>
+                <th>状态</th>
+                <th>信道 / 频宽</th>
+                <th>发射功率</th>
+                <th>底噪 / 射频温度</th>
+                <th>空口繁忙 / 邻居干扰 (OBSS)</th>
+                <th>发包重传</th>
+                <th>在线</th>
+              </tr>
+            </thead>
+            <tbody id="overviewRadios"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 无线与设备 -->
+    <section class="view" id="view-wifi" role="tabpanel" aria-labelledby="tab-wifi" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h1>在线无线设备</h1>
+          <div class="head-actions">
+            <span class="meta-line" id="clientCount">0 台设备</span>
+            <button type="button" class="btn-secondary" id="btnRefreshWifi">刷新</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table client-table mobile-cards">
+            <thead>
+              <tr>
+                <th>设备备注 / MAC</th>
+                <th>IP 地址</th>
+                <th>频段 / 规格</th>
+                <th>信号强度</th>
+                <th>协商速率 (TX / RX)</th>
+                <th>重传率</th>
+                <th>流量 (收 / 发)</th>
+                <th>在线</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="clientRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 手持实时信号测绘 (Walk Test) -->
+      <div class="panel" id="walkTestPanel">
+        <div class="panel-head">
+          <div class="head-stack">
+            <h2>手持实时信号测绘 (Walk Test)</h2>
+            <div class="meta-line">AP 端 500ms 实时回传（突破 iOS 信号读取限制，自动识别本机；默认休眠零开销）</div>
+          </div>
+          <div class="head-actions">
+            <select id="wtTarget" class="select-sm" aria-label="选择测绘设备">
+              <option value="">自动识别本机</option>
+            </select>
+            <button type="button" class="btn-secondary btn-sm" id="btnWtSound" aria-pressed="false">提示音：关</button>
+            <button type="button" class="btn-primary btn-sm" id="btnWtToggle">开始测信号</button>
+          </div>
+        </div>
+        <div id="wtBody" hidden>
+          <div class="wt-hero">
+            <div class="wt-rssi-box">
+              <div class="wt-rssi-top">
+                <span class="wt-rssi-num mono" id="wtRssiVal">— dBm</span>
+                <span class="status-tag" id="wtQualityTag">等待采样</span>
+              </div>
+              <div class="wt-meter" aria-hidden="true"><div class="wt-meter-fill" id="wtMeterFill"></div></div>
+              <div class="meta-line" id="wtIdentityLine">点击「开始测信号」后自动识别当前手持设备</div>
+            </div>
+            <div class="wt-stats-grid">
+              <div class="wt-stat">
+                <span class="wt-stat-k">频段 / 信道</span>
+                <span class="wt-stat-v mono" id="wtBandChan">—</span>
+              </div>
+              <div class="wt-stat">
+                <span class="wt-stat-k">双天线 / SNR</span>
+                <span class="wt-stat-v mono" id="wtAntSnr">—</span>
+              </div>
+              <div class="wt-stat">
+                <span class="wt-stat-k">协商速率 (TX / RX)</span>
+                <span class="wt-stat-v mono" id="wtRates">—</span>
+              </div>
+              <div class="wt-stat">
+                <span class="wt-stat-k">延迟 RTT / 窗口重传 Δ</span>
+                <span class="wt-stat-v mono" id="wtRttRetry">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="scope-canvas chart-wrap" data-chart="walktest">
+            <div class="rf-legend">
+              <span class="rf-legend-item"><span class="rf-dot rf-dot--accent" aria-hidden="true"></span>实时 RSSI（近 60 秒）</span>
+              <span class="rf-legend-item"><span class="rf-dot rf-dot--ok" aria-hidden="true"></span>-60 dBm 良好</span>
+              <span class="rf-legend-item"><span class="rf-dot rf-dot--err" aria-hidden="true"></span>-75 dBm 偏弱</span>
+              <span class="meta-line mono wt-summary-pill" id="wtSummary">—</span>
+            </div>
+            <svg id="wtSvg" class="chart-svg chart-svg--wt" role="img" aria-label="实时信号强度波形"></svg>
+            <div class="chart-tip mono" id="wtTip" hidden></div>
+          </div>
+          <div class="divider"></div>
+          <div class="wt-pin-bar">
+            <div class="wt-chips" role="group" aria-label="快捷点位名称">
+              <button type="button" class="wt-chip" data-spot="书桌">书桌</button>
+              <button type="button" class="wt-chip" data-spot="床头">床头</button>
+              <button type="button" class="wt-chip" data-spot="床尾">床尾</button>
+              <button type="button" class="wt-chip" data-spot="门口">门口</button>
+              <button type="button" class="wt-chip" data-spot="卫生间">卫生间</button>
+              <button type="button" class="wt-chip" data-spot="客厅">客厅</button>
+            </div>
+            <div class="wt-pin-controls">
+              <input type="text" id="wtSpotName" maxlength="24" placeholder="点位名称（如：书桌 / 挪音箱后）">
+              <button type="button" class="btn-primary btn-sm" id="btnWtPin">记录当前点位</button>
+              <button type="button" class="btn-secondary btn-sm" id="btnWtClearSpots">清空</button>
+            </div>
+          </div>
+          <div class="table-wrap table-scroll-sm">
+            <table class="data-table mobile-cards">
+              <thead>
+                <tr>
+                  <th>点位</th>
+                  <th>频段 / 信道</th>
+                  <th>信号强度 (双天线)</th>
+                  <th>SNR</th>
+                  <th>速率 (TX / RX)</th>
+                  <th>RTT / 重传</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="wtSpotRows">
+                <tr><td colspan="7" class="empty-cell">走到目标位置后点击「记录当前点位」，即可对比各角落信号覆盖</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="split-2">
+        <form class="panel form-panel" id="form-wl1" data-iface="wl1">
+          <div class="panel-head">
+            <h2>5 GHz 主无线 (wl1)</h2>
+            <div class="head-actions">
+              <span class="status-tag" id="tag-wl1">—</span>
+              <button type="button" class="btn-secondary btn-sm" id="btnToggleWl1">停用</button>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label">网络名称 (SSID)</span>
+              <input type="text" name="ssid" maxlength="32" required>
+            </label>
+            <label class="field">
+              <span class="field-label">WPA2 密码（留空保持不变）</span>
+              <input type="password" name="passphrase" minlength="8" maxlength="63" placeholder="留空不修改" autocomplete="new-password">
+            </label>
+            <label class="field">
+              <span class="field-label">主信道</span>
+              <select name="channel">
+                <option value="36">36 (5180 MHz)</option>
+                <option value="40">40 (5200 MHz)</option>
+                <option value="44">44 (5220 MHz)</option>
+                <option value="48">48 (5240 MHz)</option>
+                <option value="52">52 (5260 MHz)</option>
+                <option value="56">56 (5280 MHz)</option>
+                <option value="60">60 (5300 MHz)</option>
+                <option value="64">64 (5320 MHz)</option>
+                <option value="149">149 (5745 MHz)</option>
+                <option value="153">153 (5765 MHz)</option>
+                <option value="157">157 (5785 MHz)</option>
+                <option value="161">161 (5805 MHz)</option>
+                <option value="165">165 (5825 MHz)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">频宽</span>
+              <select name="width_mhz">
+                <option value="160">160 MHz (推荐，36–64)</option>
+                <option value="80">80 MHz</option>
+                <option value="40">40 MHz</option>
+                <option value="20">20 MHz</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">发射功率 (10–100%)</span>
+              <input type="number" name="txpwr_percent" min="10" max="100" value="100">
+            </label>
+            <label class="field">
+              <span class="field-label">弱信号拒连阈值 (-95~-40 dBm，0=关闭)</span>
+              <input type="number" name="assoc_rssi_th" min="-95" max="0" value="0" placeholder="如 -80">
+            </label>
+            <div class="check-row">
+              <label class="check-inline"><input type="checkbox" name="hidden"><span>隐藏 SSID</span></label>
+              <label class="check-inline"><input type="checkbox" name="isolate"><span>客户端隔离</span></label>
+            </div>
+          </div>
+          <div class="form-foot">
+            <span class="hint">直写 /etc/hostapd/wl1.conf（802.11h 与 WPS 已关）</span>
+            <button type="submit" class="btn-primary">保存并重启 5G</button>
+          </div>
+        </form>
+
+        <form class="panel form-panel" id="form-wl0" data-iface="wl0">
+          <div class="panel-head">
+            <h2>2.4 GHz 主无线 (wl0)</h2>
+            <div class="head-actions">
+              <span class="status-tag" id="tag-wl0">—</span>
+              <button type="button" class="btn-secondary btn-sm" id="btnToggleWl0">停用</button>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label">网络名称 (SSID)</span>
+              <input type="text" name="ssid" maxlength="32" required>
+            </label>
+            <label class="field">
+              <span class="field-label">WPA2 密码（留空保持不变）</span>
+              <input type="password" name="passphrase" minlength="8" maxlength="63" placeholder="留空不修改" autocomplete="new-password">
+            </label>
+            <label class="field">
+              <span class="field-label">主信道</span>
+              <select name="channel">
+                <option value="1">1 (2412 MHz)</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6 (2437 MHz)</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+                <option value="11">11 (2462 MHz)</option>
+                <option value="12">12</option>
+                <option value="13">13 (2472 MHz)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">频宽</span>
+              <select name="width_mhz">
+                <option value="20">20 MHz (推荐，抗干扰)</option>
+                <option value="40">40 MHz</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">发射功率 (10–100%)</span>
+              <input type="number" name="txpwr_percent" min="10" max="100" value="100">
+            </label>
+            <label class="field">
+              <span class="field-label">弱信号拒连阈值 (-95~-40 dBm，0=关闭)</span>
+              <input type="number" name="assoc_rssi_th" min="-95" max="0" value="0" placeholder="如 -82">
+            </label>
+            <div class="check-row">
+              <label class="check-inline"><input type="checkbox" name="hidden"><span>隐藏 SSID</span></label>
+              <label class="check-inline"><input type="checkbox" name="isolate"><span>客户端隔离</span></label>
+            </div>
+          </div>
+          <div class="form-foot">
+            <span class="hint">直写 /etc/hostapd/wl0.conf</span>
+            <button type="submit" class="btn-primary">保存并重启 2.4G</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 访客 / IoT 多 SSID + 802.1Q VLAN -->
+      <details class="panel fold-panel">
+        <summary>访客 / IoT 多 SSID 与 802.1Q VLAN 隔离（wl1.1 / wl0.1）</summary>
+        <div class="fold-body split-2">
+          <form class="panel form-panel" id="form-guest-wl1" data-iface="wl1">
+            <div class="panel-head">
+              <h2>5G 访客网络 (wl1.1)</h2>
+              <span class="status-tag" id="tag-guest-wl1">未启用</span>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span class="field-label">访客 SSID</span>
+                <input type="text" name="ssid" maxlength="32" placeholder="OpenWrt-Guest">
+              </label>
+              <label class="field">
+                <span class="field-label">WPA2 密码（首次开启必填）</span>
+                <input type="password" name="passphrase" minlength="8" maxlength="63" placeholder="8-63 位" autocomplete="new-password">
+              </label>
+              <label class="field">
+                <span class="field-label">802.1Q VLAN ID（0=桥接主网，2–4094=独立 VLAN）</span>
+                <input type="number" name="vlan_id" min="0" max="4094" value="0">
+              </label>
+              <div class="check-row">
+                <label class="check-inline"><input type="checkbox" name="enabled"><span>启用 5G 访客 SSID</span></label>
+                <label class="check-inline"><input type="checkbox" name="isolate" checked><span>客户端隔离</span></label>
+                <label class="check-inline"><input type="checkbox" name="hidden"><span>隐藏</span></label>
+              </div>
+            </div>
+            <div class="form-foot">
+              <span class="hint">VLAN &gt; 0 将自动创建 lan0.&lt;vid&gt; 桥接</span>
+              <button type="submit" class="btn-primary">应用 5G 访客</button>
+            </div>
+          </form>
+
+          <form class="panel form-panel" id="form-guest-wl0" data-iface="wl0">
+            <div class="panel-head">
+              <h2>2.4G IoT / 访客网络 (wl0.1)</h2>
+              <span class="status-tag" id="tag-guest-wl0">未启用</span>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span class="field-label">IoT / 访客 SSID</span>
+                <input type="text" name="ssid" maxlength="32" placeholder="OpenWrt-IoT">
+              </label>
+              <label class="field">
+                <span class="field-label">WPA2 密码（首次开启必填）</span>
+                <input type="password" name="passphrase" minlength="8" maxlength="63" placeholder="8-63 位" autocomplete="new-password">
+              </label>
+              <label class="field">
+                <span class="field-label">802.1Q VLAN ID（0=桥接主网，2–4094=独立 VLAN）</span>
+                <input type="number" name="vlan_id" min="0" max="4094" value="0">
+              </label>
+              <div class="check-row">
+                <label class="check-inline"><input type="checkbox" name="enabled"><span>启用 2.4G IoT SSID</span></label>
+                <label class="check-inline"><input type="checkbox" name="isolate" checked><span>客户端隔离</span></label>
+                <label class="check-inline"><input type="checkbox" name="hidden"><span>隐藏</span></label>
+              </div>
+            </div>
+            <div class="form-foot">
+              <span class="hint">配合主路由 VLAN 可彻底隔离智能家居网段</span>
+              <button type="submit" class="btn-primary">应用 2.4G 访客</button>
+            </div>
+          </form>
+        </div>
+      </details>
+
+      <!-- 无缝漫游与 MAC 访问控制 -->
+      <details class="panel fold-panel">
+        <summary>无缝漫游（802.11k / 11v / 11r）与 MAC 访问控制（黑白名单）</summary>
+        <div class="fold-body split-2">
+          <form class="panel form-panel" id="form-adv-wl1" data-iface="wl1">
+            <div class="panel-head"><h2>5G 漫游与 ACL (wl1)</h2></div>
+            <div class="form-grid">
+              <div class="check-row">
+                <label class="check-inline"><input type="checkbox" name="dot11k"><span>802.11k 邻居报告</span></label>
+                <label class="check-inline"><input type="checkbox" name="dot11v"><span>802.11v 漫游引导</span></label>
+                <label class="check-inline"><input type="checkbox" name="dot11r"><span>802.11r 快速切换</span></label>
+              </div>
+              <label class="field">
+                <span class="field-label">11r 漫游域 (4 位 Hex)</span>
+                <input type="text" name="mobility_domain" maxlength="4" value="6371" class="mono">
+              </label>
+              <label class="field">
+                <span class="field-label">MAC 访问控制</span>
+                <select name="mac_mode">
+                  <option value="0">关闭</option>
+                  <option value="1">黑名单（禁止下列 MAC）</option>
+                  <option value="2">白名单（仅允许下列 MAC）</option>
+                </select>
+              </label>
+              <label class="field field-full">
+                <span class="field-label">MAC 列表（每行一个，如 AA:BB:CC:DD:EE:FF）</span>
+                <textarea name="mac_list" class="mono" placeholder="AA:BB:CC:DD:EE:FF"></textarea>
+              </label>
+            </div>
+            <div class="form-foot">
+              <span class="hint">保存后将同步更新 5G hostapd 配置</span>
+              <button type="submit" class="btn-primary">保存 5G 高级项</button>
+            </div>
+          </form>
+
+          <form class="panel form-panel" id="form-adv-wl0" data-iface="wl0">
+            <div class="panel-head"><h2>2.4G 漫游与 ACL (wl0)</h2></div>
+            <div class="form-grid">
+              <div class="check-row">
+                <label class="check-inline"><input type="checkbox" name="dot11k"><span>802.11k 邻居报告</span></label>
+                <label class="check-inline"><input type="checkbox" name="dot11v"><span>802.11v 漫游引导</span></label>
+                <label class="check-inline"><input type="checkbox" name="dot11r"><span>802.11r 快速切换</span></label>
+              </div>
+              <label class="field">
+                <span class="field-label">11r 漫游域 (4 位 Hex)</span>
+                <input type="text" name="mobility_domain" maxlength="4" value="6371" class="mono">
+              </label>
+              <label class="field">
+                <span class="field-label">MAC 访问控制</span>
+                <select name="mac_mode">
+                  <option value="0">关闭</option>
+                  <option value="1">黑名单（禁止下列 MAC）</option>
+                  <option value="2">白名单（仅允许下列 MAC）</option>
+                </select>
+              </label>
+              <label class="field field-full">
+                <span class="field-label">MAC 列表（每行一个，如 AA:BB:CC:DD:EE:FF）</span>
+                <textarea name="mac_list" class="mono" placeholder="AA:BB:CC:DD:EE:FF"></textarea>
+              </label>
+            </div>
+            <div class="form-foot">
+              <span class="hint">保存后将同步更新 2.4G hostapd 配置</span>
+              <button type="submit" class="btn-primary">保存 2.4G 高级项</button>
+            </div>
+          </form>
+        </div>
+      </details>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>周边无线信道扫描</h2>
+          <div class="head-actions">
+            <button type="button" class="btn-secondary" id="btnScan5g">扫描 5G</button>
+            <button type="button" class="btn-secondary" id="btnScan24g">扫描 2.4G</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>SSID</th>
+                <th>BSSID</th>
+                <th>信道 / 频宽</th>
+                <th>信号强度</th>
+                <th>底噪</th>
+              </tr>
+            </thead>
+            <tbody id="scanRows">
+              <tr><td colspan="5" class="empty-cell">点击上方按钮触发扫描（耗时约 2 秒）</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 射频调优 -->
+    <section class="view" id="view-tune" role="tabpanel" aria-labelledby="tab-tune" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h1>一键智能体检与调优</h1>
+          <div class="head-actions">
+            <span class="status-tag" id="optScoreTag">尚未体检</span>
+            <button type="button" class="btn-secondary" id="btnQuickRtt">测当前延迟</button>
+            <button type="button" class="btn-secondary" id="btnOptAnalyze">开始体检分析</button>
+            <button type="button" class="btn-primary" id="btnOptApply">一键应用最优方案</button>
+          </div>
+        </div>
+        <div class="panel-note" id="optSummary">
+          点击「开始体检分析」将扫描周边 5G 与 2.4G 全部信道（约 4 秒，不断网）；点击「一键应用最优方案」会自动采样优化前后的硬件空口快照与无线 RTT 延迟（剔除首包省电尖峰）生成对比报告。
+        </div>
+        <div id="optCompareWrap" hidden>
+          <div class="divider"></div>
+          <div class="panel-head panel-head--sub">
+            <h3 id="optCompareTitle">优化前后实测对比（硬件空口快照 + 无线延迟）</h3>
+            <span class="meta-line mono" id="optCompareHint">12 次轻载探测，剔除前 2 次省电唤醒热身</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table mobile-cards">
+              <thead>
+                <tr>
+                  <th>指标</th>
+                  <th>优化前</th>
+                  <th>优化后</th>
+                  <th>变化</th>
+                </tr>
+              </thead>
+              <tbody id="optCompareRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="optBody" hidden>
+          <div class="divider"></div>
+          <div class="split-2 opt-bands">
+            <div class="opt-band-box">
+              <div class="opt-band-head">
+                <strong>5 GHz (160 MHz 主信道评分)</strong>
+                <span class="meta-line" id="opt5gSum">—</span>
+              </div>
+              <div class="opt-ch-list" id="opt5gList"></div>
+            </div>
+            <div class="opt-band-box">
+              <div class="opt-band-head">
+                <strong>2.4 GHz (20 MHz 干净信道排行)</strong>
+                <span class="meta-line" id="opt24gSum">—</span>
+              </div>
+              <div class="opt-ch-list" id="opt24gList"></div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table mobile-cards">
+              <thead>
+                <tr>
+                  <th>体检项</th>
+                  <th>当前值</th>
+                  <th>建议值</th>
+                  <th>状态</th>
+                  <th>调优依据</th>
+                </tr>
+              </thead>
+              <tbody id="optItems"></tbody>
+            </table>
+          </div>
+          <div class="form-foot">
+            <label class="check-inline">
+              <input type="checkbox" id="optApplyCh" checked>
+              <span>同时应用信道变更（仅在需要换道时触发约 2 秒重连）</span>
+            </label>
+            <span class="meta-line mono" id="optMeta">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>24 小时无线信号环境记录</h2>
+          <div class="head-actions">
+            <div class="seg-group" id="rfRangeGroup" role="group" aria-label="历史时间范围">
+              <button type="button" class="seg-btn" data-range="1h" aria-pressed="false">1小时</button>
+              <button type="button" class="seg-btn active" data-range="6h" aria-pressed="true">6小时</button>
+              <button type="button" class="seg-btn" data-range="24h" aria-pressed="false">24小时</button>
+            </div>
+            <div class="seg-group" id="rfBandGroup" role="group" aria-label="统计频段">
+              <button type="button" class="seg-btn active" data-band="5g" aria-pressed="true">5G</button>
+              <button type="button" class="seg-btn" data-band="24g" aria-pressed="false">2.4G</button>
+            </div>
+            <select id="rfMetricSel" class="select-sm" aria-label="选择图表指标">
+              <option value="air">空口繁忙 / 邻居干扰 (OBSS)</option>
+              <option value="noise">底噪 / 实时重传率</option>
+              <option value="temp">射频与 SoC 温度</option>
+              <option value="rssi">在线设备 RSSI 轨迹</option>
+            </select>
+            <button type="button" class="btn-secondary btn-sm" id="btnRfSample">立即采样</button>
+            <button type="button" class="btn-secondary btn-sm" id="btnRfExport">导出 CSV</button>
+          </div>
+        </div>
+        <div class="metric-strip metric-strip--bordered">
+          <div class="metric-cell">
+            <div class="metric-label">5G 邻居干扰 (平均 / 峰值)</div>
+            <div class="metric-val mono" id="rfStat5Obss">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">5G 平均底噪</div>
+            <div class="metric-val mono" id="rfStat5Noise">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">2.4G 邻居干扰 (平均 / 峰值)</div>
+            <div class="metric-val mono" id="rfStat2Obss">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">已记录样本 (零写闪存)</div>
+            <div class="metric-val mono" id="rfStatCount">—</div>
+          </div>
+        </div>
+        <div class="scope-canvas chart-wrap" data-chart="rf">
+          <div class="rf-legend" id="rfLegend"></div>
+          <svg id="rfChartSvg" class="chart-svg chart-svg--rf" role="img" aria-label="无线环境历史曲线"></svg>
+          <div class="chart-tip mono" id="rfTip" hidden></div>
+        </div>
+        <div class="divider"></div>
+        <div class="panel-head panel-head--sub">
+          <h3>无线事件回溯（设备上下线 / 切频）</h3>
+          <span class="meta-line" id="rfEventCount">0 条记录</span>
+        </div>
+        <div class="table-wrap table-scroll-md">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>设备</th>
+                <th>事件</th>
+                <th>频段</th>
+                <th>详情</th>
+              </tr>
+            </thead>
+            <tbody id="rfEventRows">
+              <tr><td colspan="5" class="empty-cell">暂无无线事件（系统后台持续记录中）</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>双频射频与 Wi-Fi 6 手动微调</h2>
+          <span class="meta-line">所有参数持久化至 config.json，重启或重载无线自动恢复</span>
+        </div>
+        <div class="tune-grid">
+          <div class="tune-controls">
+            <div class="form-grid form-grid--flush">
+              <label class="field">
+                <span class="field-label">帧突发 (frameburst，推荐=1)</span>
+                <select id="tFrameburst">
+                  <option value="1">1 - 开启</option>
+                  <option value="0">0 - 关闭</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">A-MPDU RTS 握手 (推荐=0)</span>
+                <select id="tAmpduRts">
+                  <option value="0">0 - 关闭（高吞吐）</option>
+                  <option value="1">1 - 开启（强抗干扰）</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">5G 接收降敏 (phy_rxdesens, 0–30)</span>
+                <input type="number" id="tRxdesens" min="0" max="30" value="15">
+              </label>
+              <label class="field">
+                <span class="field-label">5G 发射功率 (%)</span>
+                <input type="number" id="tWl1Pwr" min="10" max="100" value="100">
+              </label>
+              <label class="field">
+                <span class="field-label">2.4G 发射功率 (%)</span>
+                <input type="number" id="tWl0Pwr" min="10" max="100" value="100">
+              </label>
+              <label class="field">
+                <span class="field-label">5G Wi-Fi 6 TWT 省电唤醒</span>
+                <select id="tTwt">
+                  <option value="1">1 - 开启</option>
+                  <option value="0">0 - 关闭</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">5G ATF 空口时间公平调度</span>
+                <select id="tAtf">
+                  <option value="0">0 - 关闭</option>
+                  <option value="1">1 - 开启（防慢设备拖后腿）</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">5G WME APSD 节能</span>
+                <select id="tApsd">
+                  <option value="1">1 - 开启</option>
+                  <option value="0">0 - 关闭</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">2.4G Wi-Fi 6 (HE) 模式</span>
+                <select id="tWl0He">
+                  <option value="0">0 - 关闭（兼容老 IoT）</option>
+                  <option value="1">1 - 开启（会重启 2.4G）</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">2.4G 频宽</span>
+                <select id="tWl0Width">
+                  <option value="20">20 MHz</option>
+                  <option value="40">40 MHz（会重启 2.4G）</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-foot">
+              <span class="hint">多数参数热生效不掉线；严禁修改 BCM68252 IRQ 亲和性</span>
+              <button type="button" class="btn-primary" id="btnApplyTune">应用参数</button>
+            </div>
+          </div>
+          <div class="kv-list" id="tuneMeta"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 感知雷达（CSI 存在感知 + STA Monitor 靠近监测） -->
+    <section class="view" id="view-radar" role="tabpanel" aria-labelledby="tab-radar" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="head-stack">
+            <h1>Wi-Fi CSI 存在感知雷达 (CSIMON 1.1.0)</h1>
+            <div class="meta-line" id="radarMeta">通过双天线子载波幅度 + 相位差 MAD 检测房间微动与有人活动（零摄像头 / 零写闪存）</div>
+          </div>
+          <div class="head-actions">
+            <span class="status-tag" id="radarStateTag">未启用</span>
+            <button type="button" class="btn-secondary btn-sm" id="btnRadarCal">30秒空房标定</button>
+            <button type="button" class="btn-secondary btn-sm" id="btnRadarRefresh">刷新</button>
+          </div>
+        </div>
+        <div class="metric-strip metric-strip--bordered">
+          <div class="metric-cell">
+            <div class="metric-label">实时运动指数 (CSI)</div>
+            <div class="metric-val mono" id="radarScore">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">双天线相位扰动</div>
+            <div class="metric-val mono" id="radarPhase">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">目标双天线 RSSI</div>
+            <div class="metric-val mono" id="radarRssi">—</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">已采样 CSI 帧 / 协议</div>
+            <div class="metric-val mono" id="radarFrames">—</div>
+          </div>
+        </div>
+        <div class="scope-canvas chart-wrap" data-chart="radar">
+          <div class="rf-legend" id="radarLegend">
+            <span class="rf-legend-item"><span class="rf-dot rf-dot--accent" aria-hidden="true"></span>实时运动指数（近 2 分钟）</span>
+            <span class="rf-legend-item"><span class="rf-dot rf-dot--warn" aria-hidden="true"></span>微动阈值</span>
+            <span class="rf-legend-item"><span class="rf-dot rf-dot--err" aria-hidden="true"></span>有人阈值</span>
+          </div>
+          <svg id="radarSvg" class="chart-svg chart-svg--radar" role="img" aria-label="CSI 实时运动波形"></svg>
+          <div class="chart-tip mono" id="radarTip" hidden></div>
+          <div class="meta-line chart-note" id="radarCalNote"></div>
+        </div>
+        <form id="formRadar" class="form-section">
+          <div class="form-grid">
+            <label class="field toggle-field">
+              <span class="field-label">启用 CSI 存在雷达</span>
+              <input type="checkbox" name="enabled" id="radarEnabled">
+            </label>
+            <label class="field">
+              <span class="field-label">监听射频</span>
+              <select name="iface" id="radarIface">
+                <option value="wl0">2.4 GHz (wl0 · Netlink 28)</option>
+                <option value="wl1">5 GHz (wl1 · Netlink 23)</option>
+              </select>
+            </label>
+            <div class="field field-full">
+              <label class="field-label" for="radarTarget">常驻目标终端（下拉选择当前已连接设备，或直接输入 MAC；建议对面墙固定供电设备）</label>
+              <div class="field-row field-row--wrap">
+                <select id="radarTargetPick" class="flex-12 min-w-220" aria-label="从当前已连接设备中选择 CSI 目标">
+                  <option value="">选择当前已连接设备…</option>
+                </select>
+                <input type="text" name="target_mac" id="radarTarget" list="radarCandidates" placeholder="AA:BB:CC:DD:EE:FF" class="mono flex-10 min-w-190">
+                <datalist id="radarCandidates"></datalist>
+              </div>
+            </div>
+            <label class="field">
+              <span class="field-label">采样间隔 (ms, 默认 200)</span>
+              <input type="number" name="interval_ms" id="radarInterval" min="100" max="2000" step="50" value="200">
+            </label>
+            <fieldset class="field field-group">
+              <legend class="field-label">微动维持 / 有人触发阈值</legend>
+              <div class="field-row">
+                <input type="number" name="micro_thresh" id="radarMicro" step="0.5" min="1" value="3.5" title="微动维持阈值（仅在已判定有人时续命）" aria-label="微动维持阈值">
+                <input type="number" name="motion_thresh" id="radarMotion" step="0.5" min="2" value="12" title="有人触发阈值（空房唤醒门槛）" aria-label="有人触发阈值">
+              </div>
+            </fieldset>
+            <fieldset class="field field-group">
+              <legend class="field-label">防抖确认 / 无人保持延时 (秒)</legend>
+              <div class="field-row">
+                <input type="number" name="confirm_sec" id="radarConfirm" min="1" max="15" value="2" title="持续超阈值确认秒数（防瞬态误报）" aria-label="防抖确认秒数">
+                <input type="number" name="hold_sec" id="radarHold" min="5" max="600" value="30" title="无人保持延时秒数" aria-label="无人保持延时秒数">
+              </div>
+            </fieldset>
+            <div class="field field-full">
+              <label class="field-label" for="radarWebhook">状态变更 Webhook（可选，支持 Home Assistant / Bark / Telegram 回调，POST JSON）</label>
+              <div class="field-row">
+                <input type="url" name="webhook_url" id="radarWebhook" placeholder="http://192.168.1.10:8123/api/webhook/csi_room" class="mono">
+                <button type="button" class="btn-secondary btn-sm flex-none" id="btnRadarTestHook">测试推送</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-foot">
+            <span class="hint">修改后立即生效并写入 config.json；建议用对面墙固定供电设备做靶标</span>
+            <button type="submit" class="btn-primary">保存雷达配置</button>
+          </div>
+        </form>
+        <div class="divider"></div>
+        <div class="panel-head panel-head--sub">
+          <h3>有人 / 无人状态切换记录</h3>
+          <span class="meta-line" id="radarEventCount">0 条记录</span>
+        </div>
+        <div class="table-wrap table-scroll-sm">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>状态变化</th>
+                <th>峰值分数</th>
+                <th>详情</th>
+              </tr>
+            </thead>
+            <tbody id="radarEventRows">
+              <tr><td colspan="4" class="empty-cell">暂无状态切换记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="head-stack">
+            <h2>未关联设备靠近监测 (STA Monitor)</h2>
+            <div class="meta-line">基于博通硬件 wl sta_monitor，无需连入本 AP 即可实时捕获指定 MAC 的无线帧 RSSI（硬件上限 4 台）</div>
+          </div>
+          <div class="head-actions">
+            <span class="status-tag warn" id="stamonDirtyTag" hidden>有未保存变更</span>
+            <span class="status-tag" id="stamonStateTag">未启用</span>
+            <button type="button" class="btn-secondary btn-sm" id="btnStamonRefresh">刷新</button>
+          </div>
+        </div>
+        <div class="metric-strip metric-strip--bordered">
+          <div class="metric-cell">
+            <div class="metric-label">在场 / 监听目标</div>
+            <div class="metric-val mono" id="stamonCount">0 / 0</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">监听频段</div>
+            <div class="metric-val mono" id="stamonBandLabel">双频</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">靠近判定阈值</div>
+            <div class="metric-val mono" id="stamonThreshLabel">-75 dBm</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-label">离开超时</div>
+            <div class="metric-val mono" id="stamonAwayLabel">180 s</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>设备名称</th>
+                <th>MAC 地址</th>
+                <th>状态</th>
+                <th>2.4G RSSI</th>
+                <th>5G RSSI</th>
+                <th>最后捕获</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="stamonRows">
+              <tr><td colspan="7" class="empty-cell">暂未添加监听设备（可在下方选择已连接设备或手动填入任意 MAC）</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <form id="formStamon" class="form-section">
+          <div class="form-grid">
+            <label class="field toggle-field">
+              <span class="field-label">启用 STA Monitor 靠近监测</span>
+              <input type="checkbox" name="enabled" id="stamonEnabled">
+            </label>
+            <label class="field">
+              <span class="field-label">监听频段</span>
+              <select name="band" id="stamonBand">
+                <option value="both">双频同时监听 (wl0 + wl1)</option>
+                <option value="wl1">仅 5 GHz (wl1)</option>
+                <option value="wl0">仅 2.4 GHz (wl0)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">在场 RSSI 阈值 (dBm, 默认 -75)</span>
+              <input type="number" name="rssi_thresh" id="stamonThresh" min="-95" max="-30" value="-75">
+            </label>
+            <label class="field">
+              <span class="field-label">离开超时 (秒, 默认 180)</span>
+              <input type="number" name="away_sec" id="stamonAway" min="30" max="3600" value="180">
+            </label>
+            <div class="field field-full">
+              <label class="field-label" for="stamonAddMac">添加监听设备（硬件 AMT 上限 4 个 MAC，支持未关联手机 / 手表 / IoT）</label>
+              <div class="field-row field-row--wrap">
+                <select id="stamonTargetPick" class="flex-12 min-w-210" aria-label="从当前已连接设备快捷填入 MAC">
+                  <option value="">从当前已连接设备快捷填入…</option>
+                </select>
+                <input type="text" id="stamonAddMac" placeholder="AA:BB:CC:DD:EE:FF" class="mono flex-10 min-w-170" aria-label="监听设备 MAC 地址">
+                <input type="text" id="stamonAddLabel" placeholder="备注名称（可选）" class="flex-09 min-w-130" aria-label="监听设备备注名称">
+                <button type="button" class="btn-secondary btn-sm flex-none" id="btnStamonAdd">添加目标</button>
+              </div>
+            </div>
+            <div class="field field-full">
+              <label class="field-label" for="stamonWebhook">到场 / 离开 Webhook（可选，POST JSON）</label>
+              <div class="field-row">
+                <input type="url" name="webhook_url" id="stamonWebhook" placeholder="http://192.168.1.10:8123/api/webhook/home_presence" class="mono">
+                <button type="button" class="btn-secondary btn-sm flex-none" id="btnStamonTestHook">测试推送</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-foot">
+            <span class="hint">添加/移除目标后记得点击右侧「保存监测配置」立即下发到驱动；每 10 秒轮询一次</span>
+            <button type="submit" class="btn-primary">保存监测配置</button>
+          </div>
+        </form>
+        <div class="divider"></div>
+        <div class="panel-head panel-head--sub">
+          <h3>到场 / 离开状态切换记录</h3>
+          <span class="meta-line" id="stamonEventCount">0 条记录</span>
+        </div>
+        <div class="table-wrap table-scroll-sm">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>设备</th>
+                <th>状态</th>
+                <th>详情</th>
+              </tr>
+            </thead>
+            <tbody id="stamonEventRows">
+              <tr><td colspan="4" class="empty-cell">暂无到场 / 离开记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. 网络与诊断 -->
+    <section class="view" id="view-network" role="tabpanel" aria-labelledby="tab-network" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h1>物理网口硬件统计（lan0 2.5G / lan1 1G）</h1>
+          <button type="button" class="btn-secondary" id="btnRefreshNet">刷新</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>网口</th>
+                <th>角色</th>
+                <th>链路</th>
+                <th>速率 / 双工</th>
+                <th>MAC</th>
+                <th>硬件接收 / 发送</th>
+                <th>包数 (RX / TX)</th>
+                <th>错包 (RX / TX)</th>
+              </tr>
+            </thead>
+            <tbody id="portRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="split-2">
+        <form class="panel form-panel" id="formNetwork">
+          <div class="panel-head">
+            <h2>管理网络配置 (br0)</h2>
+            <span class="meta-line mono" id="netCurIp">—</span>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label">获取方式</span>
+              <select name="mode" id="netMode">
+                <option value="dhcp">DHCP 自动获取（推荐）</option>
+                <option value="static">静态 IPv4</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">主机名</span>
+              <input type="text" name="hostname" maxlength="32" required class="mono">
+            </label>
+            <label class="field net-static-field">
+              <span class="field-label">IPv4 地址 (CIDR)</span>
+              <input type="text" name="ip" placeholder="192.168.1.2/24" class="mono">
+            </label>
+            <label class="field net-static-field">
+              <span class="field-label">默认网关</span>
+              <input type="text" name="gateway" placeholder="192.168.1.1" class="mono">
+            </label>
+            <label class="field net-static-field field-full">
+              <span class="field-label">DNS 服务器</span>
+              <input type="text" name="dns" placeholder="192.168.1.1" class="mono">
+            </label>
+          </div>
+          <div class="form-foot">
+            <span class="hint">写入 /etc/network/interfaces 并重启 networking</span>
+            <button type="submit" class="btn-primary">保存网络配置</button>
+          </div>
+        </form>
+
+        <div class="panel panel-col">
+          <div class="panel-head">
+            <h2>Ping 连通性测试</h2>
+          </div>
+          <form class="inline-form" id="formPing">
+            <input type="text" name="target" placeholder="目标 IP/域名（留空默认 Ping 网关）" class="mono" aria-label="Ping 目标地址">
+            <button type="submit" class="btn-primary" id="btnPing">执行 Ping</button>
+          </form>
+          <pre class="diag-out mono" id="pingOut">等待执行...</pre>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>二层桥接转发表 (br0 FDB)</h2>
+          <span class="meta-line" id="fdbCount">0 条记录</span>
+        </div>
+        <div class="table-wrap table-scroll-lg">
+          <table class="data-table mobile-cards">
+            <thead>
+              <tr>
+                <th>端口</th>
+                <th>MAC</th>
+                <th>IP</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody id="fdbRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. 系统与维护 -->
+    <section class="view" id="view-system" role="tabpanel" aria-labelledby="tab-system" hidden>
+      <div class="split-2">
+        <div class="panel">
+          <div class="panel-head">
+            <h1>A/B 双槽切换与网页刷机 (OTA)</h1>
+            <span class="meta-line" id="slotSummary">—</span>
+          </div>
+          <div class="slot-grid" id="slotCards"></div>
+          <div class="divider"></div>
+          <div class="file-row">
+            <input type="file" id="otaFile" accept=".sqfs,.bin" aria-label="选择固件根镜像文件">
+            <button type="button" class="btn-primary" id="btnOtaUpload">上传并刷入备用槽</button>
+          </div>
+          <div class="panel-note" id="otaNote">
+            自动校验 SquashFS 魔数 + XZ 压缩 + 分区上限，刷入非活动槽并强制设为一次性试跑（附带 180 秒失联自动回滚保护）。
+          </div>
+        </div>
+
+        <form class="panel form-panel" id="formPrefs">
+          <div class="panel-head">
+            <h2>指示灯、物理按键与定时计划</h2>
+            <span class="status-tag" id="ledCurTag">—</span>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label">前面板指示灯模式</span>
+              <select name="led_mode" id="prefLedMode">
+                <option value="auto">自动（开机/断网红灯，连网蓝灯）</option>
+                <option value="off">常灭（夜间免打扰）</option>
+                <option value="schedule">定时夜间熄灯</option>
+              </select>
+            </label>
+            <fieldset class="field field-group">
+              <legend class="field-label">熄灯时段 (开始 / 结束)</legend>
+              <div class="field-row field-row--tight">
+                <input type="time" name="night_start" value="23:00" aria-label="夜间熄灯开始时间">
+                <input type="time" name="night_end" value="07:00" aria-label="夜间熄灯结束时间">
+              </div>
+            </fieldset>
+            <label class="field">
+              <span class="field-label">机身按键 (GPIO 9) 短按</span>
+              <select name="btn_short">
+                <option value="toggle_led">切换指示灯 亮/灭</option>
+                <option value="none">无动作</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">机身按键 (GPIO 9) 长按 (2秒)</span>
+              <select name="btn_long">
+                <option value="toggle_guest">开关访客 Wi-Fi</option>
+                <option value="restart_wifi">重启双频无线</option>
+                <option value="none">无动作</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">无线夜间定时关闭</span>
+              <select name="ws_band">
+                <option value="wl0">仅 2.4G</option>
+                <option value="wl1">仅 5G</option>
+                <option value="both">双频全部</option>
+              </select>
+            </label>
+            <fieldset class="field field-group">
+              <legend class="field-label">关闭时段 (开始 / 结束)</legend>
+              <div class="field-row field-row--tight">
+                <input type="time" name="ws_start" value="01:00" aria-label="无线定时关闭开始时间">
+                <input type="time" name="ws_end" value="06:30" aria-label="无线定时关闭结束时间">
+              </div>
+            </fieldset>
+            <div class="check-row">
+              <label class="check-inline"><input type="checkbox" name="ws_enabled"><span>启用无线夜间定时关闭</span></label>
+            </div>
+          </div>
+          <div class="form-foot">
+            <span class="hint">立即热生效并持久化到 config.json</span>
+            <button type="submit" class="btn-primary">保存硬件与计划</button>
+          </div>
+        </form>
+      </div>
+
+      <form class="panel form-panel" id="formMqtt">
+        <div class="panel-head">
+          <div>
+            <h2>Home Assistant / MQTT 集成</h2>
+            <div class="meta-line" id="mqttMeta">内置纯 Go MQTT 3.1.1 客户端（零闪存写入），自动发现并推送 CSI 雷达、设备在家状态、射频遥测与控制开关</div>
+          </div>
+          <div class="head-actions">
+            <span class="status-tag" id="mqttStateTag">未启用</span>
+            <button type="button" class="btn-secondary btn-sm" id="btnMqttTest">测试连接</button>
+            <button type="button" class="btn-secondary btn-sm" id="btnMqttPush">立即同步</button>
+          </div>
+        </div>
+        <div class="form-grid">
+          <label class="field toggle-field">
+            <span class="field-label">启用 MQTT / HA 集成</span>
+            <input type="checkbox" name="enabled" id="mqttEnabled">
+          </label>
+          <label class="field">
+            <span class="field-label">Broker 地址（支持 tcp:// / tls://）</span>
+            <input type="text" name="broker" id="mqttBroker" placeholder="tcp://192.168.1.1:1883" class="mono">
+          </label>
+          <label class="field">
+            <span class="field-label">用户名（可选）</span>
+            <input type="text" name="username" id="mqttUser" autocomplete="username" placeholder="mqtt">
+          </label>
+          <label class="field">
+            <span class="field-label">密码（留空保持已保存密码）</span>
+            <input type="password" name="password" id="mqttPass" autocomplete="new-password" placeholder="••••••">
+          </label>
+          <label class="field">
+            <span class="field-label">主题前缀</span>
+            <input type="text" name="topic_prefix" id="mqttPrefix" value="hg6371f-ap" class="mono">
+          </label>
+          <label class="field">
+            <span class="field-label">HA 自动发现前缀</span>
+            <input type="text" name="discovery_prefix" id="mqttDiscPrefix" value="homeassistant" class="mono">
+          </label>
+          <label class="field">
+            <span class="field-label">客户端 ID</span>
+            <input type="text" name="client_id" id="mqttClientId" value="hg6371f-ap" class="mono">
+          </label>
+          <label class="field">
+            <span class="field-label">遥测上报间隔 (秒, 10–300；有人/在家变化秒推)</span>
+            <input type="number" name="interval_sec" id="mqttInterval" min="10" max="300" step="5" value="30">
+          </label>
+          <div class="check-row field-full">
+            <label class="check-inline"><input type="checkbox" name="discovery" id="mqttDiscovery" checked><span>启用 Home Assistant MQTT 自动发现</span></label>
+            <label class="check-inline"><input type="checkbox" name="allow_control" id="mqttAllowCtrl" checked><span>允许 HA 反向控制（访客 Wi-Fi / LED 模式 / CSI 雷达与标定）</span></label>
+            <label class="check-inline"><input type="checkbox" name="tls_insecure" id="mqttTlsInsecure"><span>TLS 跳过证书校验</span></label>
+            <label class="check-inline"><input type="checkbox" name="clear_password" id="mqttClearPass"><span>清除已存密码</span></label>
+          </div>
+        </div>
+        <div class="form-foot">
+          <span class="hint mono" id="mqttHint">未连接</span>
+          <button type="submit" class="btn-primary">保存 MQTT 配置</button>
+        </div>
+      </form>
+
+      <div class="split-2">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>HTTPS 证书、备份与安全</h2>
+            <span class="status-tag" id="httpsState">—</span>
+          </div>
+          <form class="form-section form-section--flush" id="formTls">
+            <div class="form-grid">
+              <label class="field field-full">
+                <span class="field-label">PEM 证书内容（留空仅改跳转开关）</span>
+                <textarea name="cert_pem" class="mono" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+              </label>
+              <label class="field field-full">
+                <span class="field-label">PEM 私钥内容</span>
+                <textarea name="key_pem" class="mono" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+              </label>
+              <div class="check-row">
+                <label class="check-inline"><input type="checkbox" name="redirect" id="tlsRedirect"><span>启用 HTTP → HTTPS 强制跳转</span></label>
+              </div>
+            </div>
+            <div class="form-foot">
+              <span class="hint">证书变更后自动热重载 :443 监听</span>
+              <button type="submit" class="btn-primary">保存证书并热启用 :443</button>
+            </div>
+          </form>
+          <div class="divider"></div>
+          <div class="file-row">
+            <button type="button" class="btn-secondary" id="btnBackup">导出配置备份 (.tar.gz)</button>
+            <input type="file" id="restoreFile" accept=".gz,.tgz,.tar.gz" aria-label="选择配置备份文件">
+            <button type="button" class="btn-secondary" id="btnRestore">恢复备份</button>
+          </div>
+          <div class="divider"></div>
+          <form class="inline-form" id="formPasswd">
+            <input type="password" name="old_pass" placeholder="当前密码" autocomplete="current-password" aria-label="当前密码">
+            <input type="password" name="new_pass" placeholder="新密码（至少 4 位）" minlength="4" required autocomplete="new-password" aria-label="新密码">
+            <button type="submit" class="btn-secondary">修改面板密码</button>
+          </form>
+          <div class="danger-row">
+            <span class="hint">安全同步磁盘并重启设备（约 25–40 秒恢复在线）</span>
+            <button type="button" class="btn-danger" id="btnReboot">重启 AP</button>
+          </div>
+        </div>
+
+        <div class="panel panel-col">
+          <div class="panel-head">
+            <h2>OpenRC 服务与系统日志</h2>
+            <div class="head-actions">
+              <div class="seg-group" id="logSrcGroup" role="group" aria-label="日志来源">
+                <button type="button" class="seg-btn active" data-src="syslog" aria-pressed="true">syslog</button>
+                <button type="button" class="seg-btn" data-src="dmesg" aria-pressed="false">dmesg</button>
+              </div>
+              <button type="button" class="btn-secondary" id="btnRefreshSys">刷新</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table mobile-cards">
+              <thead>
+                <tr>
+                  <th>服务</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="svcRows"></tbody>
+            </table>
+          </div>
+          <div class="divider"></div>
+          <pre class="log-box log-box--grow mono" id="logBox">加载中...</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 登录遮罩 -->
+  <div class="login-backdrop" id="loginView" role="dialog" aria-modal="true" aria-labelledby="loginTitle" hidden>
+    <form class="login-box" id="loginForm">
+      <h1 class="login-title" id="loginTitle">hg6371f-ap</h1>
+      <p class="login-sub">输入控制台密码以继续</p>
+      <label class="field">
+        <span class="field-label">密码</span>
+        <input type="password" id="loginPass" autocomplete="current-password">
+      </label>
+      <div class="login-err" id="loginErr" role="alert"></div>
+      <button type="submit" class="btn-primary btn-full">登录</button>
+    </form>
+  </div>
+
+  <!-- 统一无阻塞模态对话框（替代原生 confirm / prompt） -->
+  <dialog class="modal-dialog" id="appDialog" aria-labelledby="dialogTitle">
+    <form method="dialog" class="modal-form" id="dialogForm">
+      <div class="modal-head">
+        <h2 class="modal-title" id="dialogTitle">确认操作</h2>
+      </div>
+      <div class="modal-body">
+        <p class="modal-msg" id="dialogMsg"></p>
+        <label class="field" id="dialogInputWrap" hidden>
+          <span class="field-label" id="dialogInputLabel">输入内容</span>
+          <input type="text" id="dialogInput" maxlength="64">
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn-secondary" id="dialogCancel">取消</button>
+        <button type="submit" class="btn-primary" id="dialogConfirm">确定</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

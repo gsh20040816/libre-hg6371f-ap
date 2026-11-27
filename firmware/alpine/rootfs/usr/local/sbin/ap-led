@@ -1,0 +1,37 @@
+#!/bin/sh
+# Control HG6371F (hwcfg=0xba) front-panel status LED via sysfs GPIO.
+# Both channels are active-low: 0 = ON, 1 = OFF.
+#   GPIO 10 (OUT_LOS_LED) = Red
+#   GPIO 11 (OUT_PON_LED) = Blue
+set -u
+
+GPIO_R=10
+GPIO_B=11
+
+ensure_out() {
+	pin=$1
+	[ -d "/sys/class/gpio/gpio$pin" ] || printf '%s' "$pin" > /sys/class/gpio/export 2>/dev/null || true
+	[ -w "/sys/class/gpio/gpio$pin/direction" ] && printf 'out' > "/sys/class/gpio/gpio$pin/direction" 2>/dev/null || true
+}
+
+set_pin() {
+	pin=$1
+	val=$2
+	[ -w "/sys/class/gpio/gpio$pin/value" ] && printf '%s' "$val" > "/sys/class/gpio/gpio$pin/value" 2>/dev/null || true
+}
+
+[ -d /sys/class/gpio ] || exit 0
+
+for p in "$GPIO_R" "$GPIO_B"; do
+	ensure_out "$p"
+done
+
+case "${1:-red}" in
+	red)  set_pin "$GPIO_R" 0; set_pin "$GPIO_B" 1 ;;
+	blue) set_pin "$GPIO_R" 1; set_pin "$GPIO_B" 0 ;;
+	off)  set_pin "$GPIO_R" 1; set_pin "$GPIO_B" 1 ;;
+	*)
+		echo "usage: $0 {red|blue|off}" >&2
+		exit 2
+		;;
+esac

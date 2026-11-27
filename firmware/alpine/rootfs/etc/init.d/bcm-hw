@@ -1,0 +1,116 @@
+#!/sbin/openrc-run
+# Broadcom BCM68252C hardware driver, RDPA, factory MAC, and Wi-Fi RF init.
+
+description="Load minimal Broadcom network/WLAN drivers and initialize RF"
+
+depend() {
+	need localmount
+	before networking hostapd hostapd.wl0 hostapd.wl1
+}
+
+read_factory_key() {
+	key=$1
+	[ -r /fhdata/factory_conf ] || return 0
+	awk -v k="$key" '
+		$1=="config" && $2=="key" { found = ($3 == "\x27" k "\x27") }
+		found && $1=="option" && $2=="value" {
+			gsub(/^\x27|\x27$/, "", $3)
+			print $3
+			exit
+		}
+	' /fhdata/factory_conf
+}
+
+load_ko() {
+	path=$1
+	shift
+	mod=$(basename "$path" .ko | tr '-' '_')
+	[ -d "/sys/module/$mod" ] && return 0
+	if [ -f "$path" ]; then
+		insmod "$path" "$@" || ewarn "insmod failed: $path $*"
+	fi
+}
+
+start() {
+	ebegin "Loading Broadcom base & WLAN drivers"
+	export PATH="/usr/local/sbin:/usr/local/bin:$PATH"
+	KDIR="/lib/modules/$(uname -r)"
+
+	# Base Broadcom SDK, RDPA, Runner/FlowCache, 2.5G enet, PCIe, WFD, thermal
+	load_ko "$KDIR/extra/bcmlibs.ko"
+	load_ko "$KDIR/extra/bcm_knvram.ko"
+	load_ko "$KDIR/extra/bdmf.ko"
+	load_ko "$KDIR/extra/rdpa_gpl.ko"
+	load_ko "$KDIR/extra/bcm_bpm.ko"
+	load_ko "$KDIR/extra/rdpa_gpl_ext.ko"
+	load_ko "$KDIR/extra/rdpa.ko"
+	load_ko "$KDIR/extra/rdpa_usr.ko"
+	load_ko "$KDIR/extra/rdpa_mw.ko"
+	load_ko "$KDIR/extra/bcm_bp3drv.ko" modparam_license_dir=/data/licenses
+	load_ko "$KDIR/extra/gdx.ko"
+	load_ko "$KDIR/extra/bcm_ingqos.ko"
+	load_ko "$KDIR/extra/pktflow.ko"
+	load_ko "$KDIR/extra/cmdlist.ko"
+	load_ko "$KDIR/extra/sw_gso.ko"
+	load_ko "$KDIR/extra/bcm_enet.ko"
+	load_ko "$KDIR/extra/rdpa_cmd.ko"
+	load_ko "$KDIR/extra/pktrunner.ko"
+	load_ko "$KDIR/extra/bcmmcast.ko"
+	load_ko "$KDIR/extra/bcm_pcie_hcd.ko" pcie_speed_cfg=0x21 pcie_phyrxfilter=0x3
+	load_ko "$KDIR/extra/wfd.ko"
+	load_ko "$KDIR/extra/bcm_thermal.ko"
+
+	# Create Broadcom char devices not registered via devtmpfs (for fcctl/rdpa/blog)
+	for dev in fcache blog bcmrdpa rdpa_user bcmnet; do
+		maj=$(awk -v d="$dev" '$2 == d { print $1; exit }' /proc/devices)
+		[ -n "$maj" ] && [ ! -e "/dev/$dev" ] && mknod "/dev/$dev" c "$maj" 0
+	done
+
+	# Initialize BDMF shell session (matches stock /etc/rdpa_init.sh)
+	if [ -x /usr/local/sbin/bdmf_shell ]; then
+		/usr/local/sbin/bdmf_shell -c init | while read -r _ id; do echo "$id"; done > /var/bdmf_sh_id
+	fi
+
+	# Populate Broadcom kernel NVRAM from persistent stock calibration data
+	if [ -f /fhconf/data/.kernel_nvram.setting ] && [ -x /usr/local/sbin/nvram ]; then
+		/usr/local/sbin/nvram kernelset /fhconf/data/.kernel_nvram.setting >/dev/null 2>&1 || true
+	fi
+
+	# Broadcom Wi-Fi drivers (wl0 = 2.4G BCM6710, wl1 = 5G BCM6756)
+	load_ko "$KDIR/extra/wlshared.ko"
+	load_ko "$KDIR/kernel/drivers/base/firmware_loader/firmware_class.ko"
+	load_ko "$KDIR/kernel/net/wireless/cfg80211.ko"
+	load_ko "$KDIR/extra/hnd.ko"
+	load_ko "$KDIR/extra/emf.ko"
+	load_ko "$KDIR/extra/igs.ko"
+	load_ko "$KDIR/extra/wl.ko" intf_name=wl%d
+	load_ko "$KDIR/extra/wlct.ko"
+
+	# Apply factory MAC addresses from read-only /fhdata/factory_conf
+	brmac=$(read_factory_key brmac)
+	eth1mac=$(read_factory_key eth1mac)
+	eth2mac=$(read_factory_key eth2mac)
+	[ -n "$brmac" ] && echo "$brmac" > /run/bcm-brmac
+	[ -n "$eth1mac" ] && ip link set dev lan0 address "$eth1mac" 2>/dev/null || true
+	[ -n "$eth2mac" ] && ip link set dev lan1 address "$eth2mac" 2>/dev/null || true
+
+	# Derive wl0/wl1 MACs matching stock layout (eth1mac prefix + brmac last byte / +8).
+	# RF channel/width/tuning are owned by /usr/local/sbin/bcm-rf via hostapd.wl{0,1} hooks.
+	if [ -n "$eth1mac" ] && [ -n "$brmac" ]; then
+		prefix=${eth1mac%:*}
+		last_hex=${brmac##*:}
+		last_dec=$((0x$last_hex))
+		wl0_mac=$(printf '%s:%02x' "$prefix" "$last_dec")
+		wl1_mac=$(printf '%s:%02x' "$prefix" "$(((last_dec + 8) & 0xff))")
+		wl -i wl0 down 2>/dev/null || true
+		ip link set dev wl0 down 2>/dev/null || true
+		ip link set dev wl0 address "$wl0_mac" 2>/dev/null || true
+		wl -i wl0 cur_etheraddr "$wl0_mac" 2>/dev/null || true
+		wl -i wl1 down 2>/dev/null || true
+		ip link set dev wl1 down 2>/dev/null || true
+		ip link set dev wl1 address "$wl1_mac" 2>/dev/null || true
+		wl -i wl1 cur_etheraddr "$wl1_mac" 2>/dev/null || true
+	fi
+
+	eend 0
+}

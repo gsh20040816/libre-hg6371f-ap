@@ -1,0 +1,4 @@
+# Copy this file to `local.mk` (gitignored) to override defaults for your LAN.
+# AP_HOST     := ap.example.local
+# BUILD_HOST  := local          # or SSH host alias of an x86_64 Linux root build box
+# BASE_ROOTFS := backups/rootfs2.bin

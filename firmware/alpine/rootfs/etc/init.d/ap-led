@@ -1,0 +1,36 @@
+#!/sbin/openrc-run
+# Keep HG6371F front-panel status LED Red during boot/shutdown.
+# Once up, ap-panel switches it to Blue when lan0 uplink is up with IPv4,
+# and back to Red if uplink disconnects or loses IP.
+
+description="HG6371F status LED boot indicator"
+
+depend() {
+	before bcm-hw networking
+}
+
+set_led_red() {
+	if [ -x /usr/local/sbin/ap-led ]; then
+		/usr/local/sbin/ap-led red
+		return
+	fi
+	[ -d /sys/class/gpio ] || return 0
+	for p in 10 11; do
+		[ -d "/sys/class/gpio/gpio$p" ] || printf '%s' "$p" > /sys/class/gpio/export 2>/dev/null || true
+		printf 'out' > "/sys/class/gpio/gpio$p/direction" 2>/dev/null || true
+	done
+	printf '0' > /sys/class/gpio/gpio10/value 2>/dev/null || true
+	printf '1' > /sys/class/gpio/gpio11/value 2>/dev/null || true
+}
+
+start() {
+	ebegin "Setting status LED to red (booting)"
+	set_led_red
+	eend 0
+}
+
+stop() {
+	ebegin "Setting status LED to red (stopping)"
+	set_led_red
+	eend 0
+}

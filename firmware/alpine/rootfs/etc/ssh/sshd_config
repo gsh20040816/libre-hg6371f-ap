@@ -1,0 +1,18 @@
+# Standard OpenSSH configuration for HG6371F Alpine AP (key-only root access).
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+ListenAddress ::
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+PermitRootLogin prohibit-password
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys_root
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+
+UseDNS no
+AllowTcpForwarding yes
+Subsystem sftp /usr/lib/ssh/sftp-server

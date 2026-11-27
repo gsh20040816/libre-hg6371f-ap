@@ -1,0 +1,65 @@
+#!/bin/sh
+# Early hardware/filesystem bring-up before OpenRC starts.
+# Runs as the first ::sysinit entry in /etc/inittab.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+mountpoint -q /proc || mount -t proc proc /proc
+mountpoint -q /sys  || mount -t sysfs sysfs /sys
+mountpoint -q /dev  || mount -t devtmpfs devtmpfs /dev
+
+# Keep front-panel status LED solid Red during early boot (switched to Blue once LAN IP is ready).
+[ -x /usr/local/sbin/ap-led ] && /usr/local/sbin/ap-led red || true
+mkdir -p /dev/pts /dev/shm /tmp /run
+mountpoint -q /dev/pts || mount -t devpts devpts /dev/pts
+mountpoint -q /tmp     || mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
+mountpoint -q /run     || mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+
+# Overlay /var in RAM so /var/log, /var/lib/{chrony,dhcpcd}, /var/run/wdtd.pid,
+# and /var/bdmf_sh_id are all writable with zero flash wear.
+mkdir -p /tmp/var-upper /tmp/var-work
+mountpoint -q /var || mount -t overlay overlay \
+  -o lowerdir=/var,upperdir=/tmp/var-upper,workdir=/tmp/var-work /var || true
+mkdir -p /var/log /var/lib/chrony /var/lib/dhcpcd
+chown 123:123 /var/lib/chrony 2>/dev/null || true
+chown 68:68 /var/lib/dhcpcd 2>/dev/null || true
+
+# Arm the 30s hardware watchdog non-daemonized before UBI/UBIFS mounts so any
+# flash/UBI hang hits a hard 30s hardware reset rather than petting forever.
+[ -x /usr/local/sbin/wdtctl ] && /usr/local/sbin/wdtctl -t 30 start || true
+
+# Attach and mount persistent NAND UBI partitions (layout unchanged from stock).
+[ -e /dev/ubi_ctrl ] || mdev -s 2>/dev/null || true
+[ -d /sys/class/ubi/ubi1 ] || ubiattach /dev/ubi_ctrl -m 3 -d 1 || true
+[ -d /sys/class/ubi/ubi2 ] || ubiattach /dev/ubi_ctrl -m 6 -d 2 || true
+
+mkdir -p /fhdata /opt/upt/apps /fhconf
+mountpoint -q /fhdata       || mount -t ubifs -o ro ubi2_0 /fhdata || true
+mountpoint -q /opt/upt/apps || mount -t ubifs -o noatime ubi1_0 /opt/upt/apps || true
+mountpoint -q /fhconf       || mount -t ubifs -o noatime ubi1_1 /fhconf || true
+
+# Overlay writable /etc onto ubi1_0 (isolated from stock slot).
+if mountpoint -q /opt/upt/apps; then
+  mkdir -p /opt/upt/apps/alpine-etc/upper /opt/upt/apps/alpine-etc/work
+  mount -t overlay overlay \
+    -o lowerdir=/etc,upperdir=/opt/upt/apps/alpine-etc/upper,workdir=/opt/upt/apps/alpine-etc/work \
+    /etc || echo "bcm-early-mount: /etc overlay mount failed, staying read-only" >/dev/kmsg
+fi
+
+# Ensure OpenSSH root authorized_keys is synced with strict ownership/mode.
+SRC_KEYS=/opt/upt/apps/ap-panel/root/.ssh/authorized_keys
+DST_KEYS=/etc/ssh/authorized_keys_root
+if [ -f "$SRC_KEYS" ] && [ ! -s "$DST_KEYS" ]; then
+  mkdir -p /etc/ssh
+  cp "$SRC_KEYS" "$DST_KEYS"
+  chown 0:0 "$DST_KEYS"
+  chmod 600 "$DST_KEYS"
+fi
+
+# Arm the uncommitted one-shot deadman rollback guard BEFORE starting the
+# daemonized watchdog feeder (no-op once bcm_bootstate shows booted slot committed).
+[ -x /usr/local/sbin/ap-rollback-guard ] && /usr/local/sbin/ap-rollback-guard </dev/null >/dev/null 2>&1 &
+
+# Now hand off hardware watchdog petting to wdtd daemon (timeout 30s, ping ~7s).
+[ -x /usr/local/sbin/wdtctl ] && /usr/local/sbin/wdtctl -d -t 30 start
+
+exit 0

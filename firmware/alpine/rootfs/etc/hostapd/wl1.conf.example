@@ -1,0 +1,27 @@
+# Upstream hostapd 2.11 template for 5 GHz 160 MHz (wl1).
+# Copy to /etc/hostapd/wl1.conf on the device and set your real wpa_passphrase.
+# NOTE:
+#   - Do NOT set country_code= here (set via `wl -i wl1 country CN` in bcm-hw).
+#   - Use standard `channel=48` here; 160 MHz width is set via `wl -i wl1 chanspec 48/160`
+#     and hostapd 2.11 automatically syncs `ch_width=160 MHz cf1=5250`.
+driver=nl80211
+interface=wl1
+bridge=br0
+ctrl_interface=/run/hostapd
+ctrl_interface_group=0
+
+hw_mode=a
+channel=48
+beacon_int=100
+dtim_period=1
+wmm_enabled=1
+auth_algs=1
+ap_isolate=0
+ignore_broadcast_ssid=0
+
+ssid=OpenWrt
+wpa=2
+wpa_key_mgmt=WPA-PSK
+ieee80211w=0
+wpa_pairwise=CCMP
+wpa_passphrase=CHANGE_ME_5G_PASSPHRASE

@@ -1,0 +1,21 @@
+# Personal overrides & credentials
+.env
+local.mk
+*.secret
+*.key
+*.pem
+*.crt
+
+# Proprietary firmware dumps & build outputs (never commit OEM blobs)
+backups/
+build/
+*.bin
+*.sqfs
+*.img
+*.tar.gz
+
+# OS & Python bytecode
+.DS_Store
+__pycache__/
+*.pyc
+

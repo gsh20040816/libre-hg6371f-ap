@@ -1,0 +1,66 @@
+#!/bin/sh
+# Deadman's switch for uncommitted one-shot A/B tests.
+# Queries UBI A/B metadata via bcm_bootstate (fail-closed) rather than any
+# shared-NAND flag file: whenever the currently booted partition is NOT the
+# committed partition, require manual confirmation (`touch /tmp/ap-clean-ok`)
+# or permanent commit within 180s after boot; otherwise stop feeding the
+# hardware watchdog and force reboot so U-Boot falls back to the committed slot.
+
+OK_FLAG=/tmp/ap-clean-ok
+TIMEOUT_SEC=180
+
+is_booted_slot_committed() {
+  out=$(timeout 5 /usr/local/sbin/bcm_bootstate 2>/dev/null) || return 1
+  booted=$(printf '%s\n' "$out" | awk '/Booted Partition:/ { print $NF; exit }')
+  committed=$(printf '%s\n' "$out" | awk '/rd_metadata: committed / { print $3; exit }')
+  case "$booted:$committed" in
+    First:1|Second:2) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_booted_slot_committed && exit 0
+
+echo "ap-rollback-guard: armed (${TIMEOUT_SEC}s); run 'touch $OK_FLAG' to confirm" >/dev/kmsg
+
+elapsed=0
+while [ "$elapsed" -lt "$TIMEOUT_SEC" ]; do
+  if [ -f "$OK_FLAG" ]; then
+    echo "ap-rollback-guard: disarmed after ${elapsed}s" >/dev/kmsg
+    exit 0
+  fi
+  sleep 5
+  elapsed=$((elapsed + 5))
+done
+
+if is_booted_slot_committed; then
+  echo "ap-rollback-guard: disarmed (booted slot committed)" >/dev/kmsg
+  exit 0
+fi
+
+echo "ap-rollback-guard: timeout (${TIMEOUT_SEC}s) without $OK_FLAG — forcing rollback reboot" >/dev/kmsg
+# 1. FIRST stop feeding the 30s hardware watchdog so even if any later command
+#    blocks (e.g. rtnl_lock or UBIFS deadlock), the SoC unconditionally resets.
+[ -r /var/run/wdtd.pid ] && kill -9 "$(cat /var/run/wdtd.pid 2>/dev/null)" 2>/dev/null || true
+killall -9 wdtctl wdtd 2>/dev/null || true
+
+# 2. Best-effort bounded diagnostic snapshot (never block on rtnl_lock).
+{
+  echo "=== ROLLBACK SNAPSHOT $(date) ==="
+  cat /proc/cmdline 2>&1 || true
+  uname -a 2>&1 || true
+  cat /proc/modules 2>&1 || true
+  for p in /sys/class/net/*; do
+    n=$(basename "$p")
+    echo "net $n: operstate=$(cat "$p/operstate" 2>/dev/null) carrier=$(cat "$p/carrier" 2>/dev/null) speed=$(cat "$p/speed" 2>/dev/null)"
+  done
+  timeout 2 ip -br addr 2>&1 || echo "ip -br addr timed out"
+  timeout 2 rc-status -a 2>&1 || echo "rc-status timed out"
+  dmesg | tail -n 60 2>&1 || true
+} > /opt/upt/apps/alpine-etc/last-rollback.log 2>&1 || true
+
+# 3. Flush and force immediate reboot (sysrq emergency_restart first so device_shutdown
+#    cannot hang or disarm HW WDT, with reboot -f fallback + 30s HW WDT safety net).
+timeout 3 sync 2>/dev/null || true
+echo b >/proc/sysrq-trigger 2>/dev/null || true
+reboot -f

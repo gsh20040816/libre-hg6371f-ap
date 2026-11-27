@@ -1,0 +1,206 @@
+#!/bin/sh
+# Unified system-layer RF & PHY controller for HG6371F (BCM68252C).
+# Reads solely from /etc/bcm-rf.conf and /etc/hostapd/<iface>.conf.
+# Invoked by OpenRC hostapd.wl{0,1} hooks (pre/post/down) or manually (`bcm-rf tune`).
+set -eu
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+CONF="/etc/bcm-rf.conf"
+
+# Safe defaults (overridden by /etc/bcm-rf.conf)
+WL0_ENABLED=1
+WL0_WIDTH=20
+WL0_HE=0
+WL0_TXPWR_PCT=100
+WL0_ASSOC_RSSI_TH=0
+WL0_APSD=0
+WL0_GUEST_VLAN=0
+
+WL1_ENABLED=1
+WL1_WIDTH=160
+WL1_HE=1
+WL1_TXPWR_PCT=100
+WL1_ASSOC_RSSI_TH=0
+WL1_APSD=1
+WL1_TWT=1
+WL1_ATF=0
+WL1_GUEST_VLAN=0
+
+TUNE_FRAMEBURST=1
+TUNE_AMPDU_RTS=0
+TUNE_PHY_RXDESENS=15
+
+# Parse simple KEY=VALUE lines strictly (never execute arbitrary shell code)
+load_conf() {
+	[ -r "$CONF" ] || return 0
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in
+			''|'#'*) continue ;;
+		esac
+		k=${line%%=*}
+		v=${line#*=}
+		v=${v%%#*}
+		v=$(printf '%s' "$v" | tr -d ' \t\r')
+		case "$k" in
+			WL0_ENABLED|WL0_WIDTH|WL0_HE|WL0_TXPWR_PCT|WL0_ASSOC_RSSI_TH|WL0_APSD|WL0_GUEST_VLAN|\
+			WL1_ENABLED|WL1_WIDTH|WL1_HE|WL1_TXPWR_PCT|WL1_ASSOC_RSSI_TH|WL1_APSD|WL1_TWT|WL1_ATF|WL1_GUEST_VLAN|\
+			TUNE_FRAMEBURST|TUNE_AMPDU_RTS|TUNE_PHY_RXDESENS)
+				case "$v" in
+					''|-|*[!0-9-]*|?*-*) ;;
+					*) eval "$k=\$v" ;;
+				esac
+				;;
+		esac
+	done < "$CONF"
+}
+
+read_hapd_channel() {
+	[ -r "$1" ] || return 0
+	awk -F= '/^[[:space:]]*channel[[:space:]]*=/{gsub(/[^0-9]/,"",$2); print $2; exit}' "$1"
+}
+
+ensure_vlan_bridge() {
+	vid=$1
+	[ "$vid" -ge 2 ] 2>/dev/null && [ "$vid" -le 4094 ] 2>/dev/null || return 0
+	vif="lan0.$vid"
+	br="br-vlan$vid"
+	if [ ! -d "/sys/class/net/$vif" ]; then
+		ip link add link lan0 name "$vif" type vlan id "$vid" 2>/dev/null || true
+	fi
+	ip link set "$vif" up 2>/dev/null || true
+	if [ ! -d "/sys/class/net/$br" ]; then
+		ip link add name "$br" type bridge 2>/dev/null || true
+	fi
+	ip link set "$vif" master "$br" 2>/dev/null || true
+	ip link set "$br" up 2>/dev/null || true
+}
+
+rf_pre() {
+	iface=$1
+	ip link show "$iface" >/dev/null 2>&1 || return 0
+
+	if [ "$iface" = "wl0" ]; then
+		if [ "$WL0_ENABLED" = "0" ]; then
+			wl -i wl0 down 2>/dev/null || true
+			echo "bcm-rf: wl0 is disabled in $CONF" >&2
+			return 1
+		fi
+		ensure_vlan_bridge "$WL0_GUEST_VLAN"
+		ch=$(read_hapd_channel /etc/hostapd/wl0.conf)
+		case "$ch" in
+			[1-9]|1[0-3]) ;;
+			*) ch=6 ;;
+		esac
+		if [ "$WL0_WIDTH" = "40" ]; then
+			bwcap=0x3
+			if [ "$ch" -le 7 ]; then cs="${ch}l"; else cs="${ch}u"; fi
+		else
+			bwcap=0x1
+			cs="$ch"
+		fi
+		wl -i wl0 down 2>/dev/null || true
+		wl -i wl0 ap 1 2>/dev/null || true
+		wl -i wl0 country CN/947 2>/dev/null || wl -i wl0 country CN 2>/dev/null || true
+		wl -i wl0 bw_cap 2g "$bwcap" 2>/dev/null || true
+		wl -i wl0 nmode 1 2>/dev/null || true
+		wl -i wl0 vhtmode 1 2>/dev/null || true
+		wl -i wl0 he "$WL0_HE" 2>/dev/null || true
+		wl -i wl0 txbf 1 2>/dev/null || true
+		wl -i wl0 wmf_bss_enable 1 2>/dev/null || true
+		wl -i wl0 chanspec "$cs" 2>/dev/null || true
+		wl -i wl0 up 2>/dev/null || true
+	elif [ "$iface" = "wl1" ]; then
+		if [ "$WL1_ENABLED" = "0" ]; then
+			wl -i wl1 down 2>/dev/null || true
+			echo "bcm-rf: wl1 is disabled in $CONF" >&2
+			return 1
+		fi
+		ensure_vlan_bridge "$WL1_GUEST_VLAN"
+		ch=$(read_hapd_channel /etc/hostapd/wl1.conf)
+		case "$ch" in
+			36|40|44|48|52|56|60|64|149|153|157|161|165) ;;
+			*) ch=48 ;;
+		esac
+		if [ "$ch" -eq 165 ]; then
+			cs="165"
+		else
+			case "$WL1_WIDTH" in
+				160)
+					if [ "$ch" -ge 149 ]; then cs="${ch}/80"; else cs="${ch}/160"; fi
+					;;
+				80|40) cs="${ch}/${WL1_WIDTH}" ;;
+				*)     cs="$ch" ;;
+			esac
+		fi
+		wl -i wl1 down 2>/dev/null || true
+		wl -i wl1 ap 1 2>/dev/null || true
+		wl -i wl1 country CN/947 2>/dev/null || wl -i wl1 country CN 2>/dev/null || true
+		wl -i wl1 spect 0 2>/dev/null || true
+		wl -i wl1 bw_cap 5g 0xf 2>/dev/null || true
+		wl -i wl1 nmode 1 2>/dev/null || true
+		wl -i wl1 vhtmode 1 2>/dev/null || true
+		wl -i wl1 he "$WL1_HE" 2>/dev/null || true
+		wl -i wl1 txbf 1 2>/dev/null || true
+		wl -i wl1 mu_features 1 2>/dev/null || true
+		wl -i wl1 wmf_bss_enable 1 2>/dev/null || true
+		wl -i wl1 chanspec "$cs" 2>/dev/null || true
+		wl -i wl1 up 2>/dev/null || true
+	else
+		echo "bcm-rf: unsupported interface '$iface'" >&2
+		return 2
+	fi
+}
+
+rf_tune_one() {
+	iface=$1
+	[ "$(wl -i "$iface" isup 2>/dev/null || echo 0)" = "1" ] || return 0
+	if [ "$iface" = "wl0" ]; then
+		wl -i wl0 frameburst "$TUNE_FRAMEBURST" 2>/dev/null || true
+		wl -i wl0 txpwr_percent "$WL0_TXPWR_PCT" 2>/dev/null || true
+		wl -i wl0 assoc_rssi_th "$WL0_ASSOC_RSSI_TH" 2>/dev/null || true
+		wl -i wl0 wme_apsd "$WL0_APSD" 2>/dev/null || true
+	elif [ "$iface" = "wl1" ]; then
+		wl -i wl1 frameburst "$TUNE_FRAMEBURST" 2>/dev/null || true
+		wl -i wl1 ampdu_rts "$TUNE_AMPDU_RTS" 2>/dev/null || true
+		wl -i wl1 phy_rxdesens "$TUNE_PHY_RXDESENS" 2>/dev/null || true
+		wl -i wl1 wme_ac ap be aifsn 2 ecwmin 3 ecwmax 5 txop 47 2>/dev/null || true
+		wl -i wl1 txpwr_percent "$WL1_TXPWR_PCT" 2>/dev/null || true
+		wl -i wl1 assoc_rssi_th "$WL1_ASSOC_RSSI_TH" 2>/dev/null || true
+		wl -i wl1 wme_apsd "$WL1_APSD" 2>/dev/null || true
+		wl -i wl1 twt "$WL1_TWT" 2>/dev/null || true
+		wl -i wl1 atf "$WL1_ATF" 2>/dev/null || true
+	fi
+}
+
+load_conf
+
+cmd=${1:-}
+arg=${2:-}
+case "$cmd" in
+	pre)
+		[ -n "$arg" ] || { echo "usage: $0 pre <wl0|wl1>" >&2; exit 2; }
+		rf_pre "$arg"
+		;;
+	post)
+		[ -n "$arg" ] || { echo "usage: $0 post <wl0|wl1>" >&2; exit 2; }
+		rf_tune_one "$arg"
+		# Re-apply after hostapd completes initial BSS activation & PHY recalibration.
+		( sleep 3; /usr/local/sbin/bcm-rf tune "$arg" ) </dev/null >/dev/null 2>&1 &
+		;;
+	tune)
+		if [ -n "$arg" ]; then
+			rf_tune_one "$arg"
+		else
+			rf_tune_one wl0
+			rf_tune_one wl1
+		fi
+		;;
+	down)
+		[ -n "$arg" ] || { echo "usage: $0 down <wl0|wl1>" >&2; exit 2; }
+		wl -i "$arg" down 2>/dev/null || true
+		;;
+	*)
+		echo "usage: $0 {pre|post|down} <wl0|wl1> | $0 tune [wl0|wl1]" >&2
+		exit 2
+		;;
+esac

@@ -1,0 +1,12 @@
+# Standard Alpine OpenRC inittab for HG6371F.
+# bcm-early-mount runs first to mount devtmpfs/UBI, start wdtctl + rollback guard,
+# and overlay writable /etc from ubi1_0 before OpenRC starts.
+::sysinit:/usr/local/sbin/bcm-early-mount
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+
+ttyAMA0::respawn:/sbin/getty -L 115200 ttyAMA0 vt100
+
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/openrc shutdown

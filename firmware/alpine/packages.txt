@@ -1,0 +1,35 @@
+# Declarative Alpine Linux v3.21 (armv7, musl) package list for HG6371F pure AP.
+# Add or remove packages here and rebuild with: make build-alpine-rootfs
+
+alpine-baselayout
+alpine-keys
+apk-tools
+busybox
+busybox-openrc
+busybox-suid
+openrc
+ifupdown-ng
+ifupdown-ng-iproute2
+bridge
+dhcpcd
+iproute2
+iw
+ethtool
+hostapd
+hostapd-openrc
+openssh-server
+openssh-server-common-openrc
+openssh-sftp-server
+chrony
+chrony-openrc
+haveged
+haveged-openrc
+mtd-utils-ubi
+mtd-utils
+ca-certificates-bundle
+curl
+htop
+iperf3
+tcpdump
+jq
+nano

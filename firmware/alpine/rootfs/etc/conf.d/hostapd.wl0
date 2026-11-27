@@ -1,0 +1,15 @@
+# OpenRC multi-instance config for /etc/init.d/hostapd.wl0 (2.4 GHz)
+cfgfile="/etc/hostapd/wl0.conf"
+supervisor="supervise-daemon"
+
+start_pre() {
+	/usr/local/sbin/bcm-rf pre wl0
+}
+
+start_post() {
+	/usr/local/sbin/bcm-rf post wl0
+}
+
+stop_post() {
+	/usr/local/sbin/bcm-rf down wl0
+}

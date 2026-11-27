@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+# Standard OpenRC supervised service for the Go AP management panel.
+
+name="ap-panel"
+description="HG6371F Go management panel"
+supervisor="supervise-daemon"
+command="/opt/upt/apps/ap-panel/bin/ap-panel-srv"
+command_args="-listen 0.0.0.0:80 -base /opt/upt/apps/ap-panel"
+output_log="/var/log/ap-panel.log"
+error_log="/var/log/ap-panel.log"
+
+depend() {
+	need networking bcm-hw
+}
+
+start_pre() {
+	[ -x "$command" ] || { eerror "missing $command"; return 1; }
+}

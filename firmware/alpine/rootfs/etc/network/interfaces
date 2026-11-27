@@ -1,0 +1,15 @@
+auto lo
+iface lo inet loopback
+
+auto lan0
+iface lan0 inet manual
+
+auto lan1
+iface lan1 inet manual
+
+auto br0
+iface br0 inet dhcp
+	bridge-ports lan0 lan1
+	bridge-stp off
+	bridge-fd 0
+	hostname hg6371f-ap
